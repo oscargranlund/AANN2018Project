@@ -7,6 +7,14 @@ import re
 
 DATA_DIR = "data"
 
+def load_table(name, year=2008):
+    name = name + str(year) + '.xlsx'
+    path = os.path.join(DATA_DIR, name)
+    df = pd.read_excel(path, names=['Date', 'Temp', 'Wind'])
+    df.set_index('Date', inplace=True)
+    return df
+
+
 def load_data(name, year=2017, datetime=True):
     """Takes in name and year and returns a Pandas dataframe. 
         If datetime is True, dates are parsed into datetime64 format and set as index."""
@@ -34,11 +42,11 @@ def prettify(aString):
     return re.sub('\(.*\)', '', aString).strip().replace(' ', '_')
 
 
-def plot_data(name, y='Air_temperature', year=2017, time= 12):
+def plot_data(name, y='Air_temperature', year=2017, hour= 12, start_time='2017-01-01'):
     plt.figure()
     
     df = load_data(name, year = year)
-    df = df[df.index.hour == time]
+    df = df.loc[df.index.hour == hour][start_time:]
     
     plt.plot(df.index, df[y], label=name.title())
     
