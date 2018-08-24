@@ -1,22 +1,18 @@
 from math import sqrt
-from numpy import concatenate
-from matplotlib import pyplot
 import pandas as pd 
+import matplotlib.pyplot as plt 
 import os
-from pandas import read_csv
-from pandas import DataFrame
-from pandas import concat
+
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
-from matplotlib import pyplot as plt 
 
 DATA_DIR = 'data'
-location = 'korsnas'
-data_path = os.path.join(DATA_DIR, '{}_2017.xlsx'.format(location))
+location = 'korsnas_2017'
+data_path = os.path.join(DATA_DIR, '{}.xlsx'.format(location))
 
 df = pd.read_excel(data_path, index_col='Date')
 abr = {'Pressure': 'P', 'Wind_speed': 'Wnd_s', 'Air_temperature':'Tmp'}
@@ -26,7 +22,11 @@ features = ['P', 'Wnd_s', 'Tmp']
 target = 'Tmp'
 train_size = 0.8
 epochs = 50
-steps = [1,2,3]
+do_scaling = True
+steps = [3, 6, 12, 24]
+
+plot_start = '2017-10-25 00:00:00'
+plot_end = '2017-11-01 00:00:00'
 
 n_features = len(features)
 n_hours = len(steps)
@@ -45,33 +45,31 @@ def add_shifted_features(df, features, steps, forecast_step=1, dropnan=True):
     return df_new
 
 df = add_shifted_features(df, features, steps)
-print(df.head(5))
-y_data = df[target]
-X_data = df.drop(features, axis=1)
-print('X data shape: {0}\n'.format(X_data.shape))
-print(X_data.head())
-print('Y data shape: {0}\n'.format(y_data.shape))
-print(y_data.head())
+print(df.head(5), '\n')
+df_y = df[target].to_frame()
+df_X = df.drop(features, axis=1)
+print('X data shape: {0}\n'.format(df_X.shape))
+print(df_X.head())
+print('Y data shape: {0}\n'.format(df_y.shape))
+print(df_y.head())
 
 # Need some scaling
-scaler = MinMaxScaler(feature_range=(0, 1))
-X_scaled = scaler.fit_transform(X_data.values)
-y_scaled = scaler.fit_transform(y_data.values.reshape(-1,1))
-
+if do_scaling:
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    X_data = scaler.fit_transform(df_X.values)
+    y_data = scaler.fit_transform(df_y.values)
+else:
+    X_data = df_X.values
+    y_data = df_y.values
 # Splitting into train and test data
 n = int(train_size * len(X_data))
-X_train, X_test = X_scaled[:n, :], X_scaled[n:, :]
-y_train, y_test = y_scaled[:n], y_scaled[n:]
+X_train, X_test = X_data[:n, :], X_data[n:, :]
+y_train, y_test = y_data[:n], y_data[n:]
 
-#n_obs = n_hours * n_features
-
-#train_X, train_y = train[:, :n_obs], train[:, -n_features]
-#test_X, test_y = test[:, :n_obs], test[:, -n_features]
 
 # LSTM needs a 3-D shape
 X_train = X_train.reshape((X_train.shape[0], n_hours, n_features))
 X_test = X_test.reshape((X_test.shape[0], n_hours, n_features))
-
 
 print('X_train reshaped: ', X_train.shape)
 print('X_test reshape: ', X_test.shape)
@@ -80,33 +78,46 @@ print('X_test reshape: ', X_test.shape)
 model = Sequential()
 model.add(LSTM(50, input_shape=(X_train.shape[1], X_train.shape[2])))
 model.add(Dense(1))
-model.compile(loss='mae', optimizer='adam')
+model.compile(loss='MSE', optimizer='adam')
 # fit network
-history = model.fit(X_train, y_train, epochs=epochs, batch_size=72, validation_data=(X_test, y_test), verbose=2, shuffle=False)
+history = model.fit(X_train, y_train, epochs=epochs, batch_size=72, validation_data=(X_test, y_test), verbose=1, shuffle=False)
 # plot history
-pyplot.plot(history.history['loss'], label='train')
-pyplot.plot(history.history['val_loss'], label='test')
-pyplot.legend()
-pyplot.show()
+plt.plot(history.history['loss'], label='train')
+plt.plot(history.history['val_loss'], label='test')
+plt.legend()
+plt.show()
  
 # # make a prediction
 yhat = model.predict(X_test)
 X_test = X_test.reshape((X_test.shape[0], n_hours*n_features))
 # # invert scaling for forecast
-inv_yhat = concatenate((yhat, X_test[:, 1:]), axis=1)
-inv_yhat = scaler.inverse_transform(inv_yhat)
-inv_yhat = inv_yhat[:,0]
+#inv_yhat = concatenate((yhat, X_test[:, 1:]), axis=1)
+#inv_yhat = scaler.inverse_transform(inv_yhat)
+if do_scaling:
+    yhat = scaler.inverse_transform(yhat)
+#inv_yhat = inv_yhat[:,0]
 # invert scaling for actual
 y_test = y_test.reshape((len(y_test), 1))
-inv_y = concatenate((y_test, X_test[:, 1:]), axis=1)
-inv_y = scaler.inverse_transform(inv_y)
-inv_y = inv_y[:,0]
+#inv_y = concatenate((y_test, X_test[:, 1:]), axis=1)
+#inv_y = scaler.inverse_transform(inv_y)
+if do_scaling:
+    y_test = scaler.inverse_transform(y_test)
+#inv_y = inv_y[:,0]
 # calculate RMSE
-rmse = sqrt(mean_squared_error(inv_y, inv_yhat))
+rmse = sqrt(mean_squared_error(y_test, yhat))
 print('Test RMSE: %.3f' % rmse)
 
-plt.plot(inv_y[-100:], label='Test Values')
-plt.plot(inv_yhat[-100:], label='Predictions')
-plt.title(target + ' predictions in ' + location)
-plt.legend()
-plt.show()
+y_test = pd.Series(y_test.flatten(), index = df_y.iloc[n:, :].index)
+yhat = pd.Series(yhat.flatten(), index = df_y.iloc[n:, :].index)
+
+def plot_predictions(y_test, yhat, start, end):
+    y_test[start: end].plot(label = 'Test Values')
+    yhat[start: end].plot(label = 'Predictions')
+    #plt.plot(inv_y[-100:], label='Test Values')
+    #plt.plot(inv_yhat[-100:], label='Predictions')
+    plt.title(target + ' predictions in ' + location)
+    plt.legend()
+    plt.show()
+
+
+plot_predictions(y_test, yhat, plot_start, plot_end)
