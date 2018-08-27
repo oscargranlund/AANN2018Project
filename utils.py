@@ -7,6 +7,26 @@ import re
 
 DATA_DIR = "data"
 
+def load_data(path, rename_abr=None, dropna=True):
+    df = pd.read_excel(path, index_col='Date')
+    
+    if rename_abr is not None:
+        df = df.rename(rename_abr, axis='columns')
+    
+    return df
+
+def add_shifted_features(df, features, steps, forecast_step=1, dropnan=True):
+    df_new = df[features].copy()
+    for feat in features:
+        for i in steps:
+            newCol = feat + '(t-{})'.format(str(i))
+            df_new[newCol] = df[feat].shift(i)
+            
+    if dropnan:
+        df_new.dropna(axis=0, inplace=True)
+    
+    return df_new
+
 def load_table(name, year=2008):
     filename = '_'.join([name, str(year)]) + '.xlsx'
     path = os.path.join(DATA_DIR, filename)
