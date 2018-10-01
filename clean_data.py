@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np 
 import re 
 import os 
-
+import sys 
 SOURCE = 'rawdata'
 DATA_OUT = 'data'
 
@@ -18,15 +18,18 @@ def make_datetime(df):
 def prettify(aString):
     return re.sub('\(.*\)', '', aString).strip().replace(' ', '_')
 
-def clean_data():
-    for file in os.listdir(SOURCE):
-        file_name, file_type = file.split('.')
-        if file_type == 'csv':
-            print(file)
-            df = pd.read_csv(os.path.join(SOURCE, file))
-            df = make_datetime(df)
-            df = df.rename(lambda x: prettify(x), axis='columns')
-            df.to_excel(os.path.join(DATA_OUT, file_name + '.xlsx'))
+def clean_data(file_name):
+    if file_name not in os.listdir(SOURCE):
+        print('No such file')
+        return
+    loc_name = file_name.split('.')[0]
+    #file_name, file_type = file.split('.')
+    df = pd.read_csv(os.path.join(SOURCE, file_name))
+    df = make_datetime(df)
+    df = df.rename(lambda x: prettify(x), axis='columns')
+    df.to_excel(os.path.join(DATA_OUT, loc_name + '.xlsx'))
 
 if __name__ == '__main__':
-    clean_data()
+    if len(sys.argv) > 1:
+        name = sys.argv[-1]
+        clean_data(name)
