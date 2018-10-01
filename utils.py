@@ -7,13 +7,17 @@ import re
 
 DATA_DIR = "data"
 
-def load_data(path, rename_abr=None, dropna=True):
+def load_data(name, rename=True):
+    path = os.path.join(DATA_DIR, name)
     df = pd.read_excel(path, index_col='Date')
     
-    if rename_abr is not None:
-        df = df.rename(rename_abr, axis='columns')
-    
+    if rename:
+        abr = {'Pressure': 'P', 'Wind_speed': 'Wnd_s', 
+               'Air_temperature':'Tmp', 'Wind_direction':'Wnd_dir', 
+               'Cloud_amount': 'Clouds'}
+        df = df.rename(abr, axis='columns')
     return df
+
 
 def add_shifted_features(df, features, steps, forecast_step=1, dropnan=True):
     df_new = df[features].copy()
@@ -26,6 +30,7 @@ def add_shifted_features(df, features, steps, forecast_step=1, dropnan=True):
         df_new.dropna(axis=0, inplace=True)
     
     return df_new
+
 
 def load_table(name, year=2008):
     filename = '_'.join([name, str(year)]) + '.xlsx'
