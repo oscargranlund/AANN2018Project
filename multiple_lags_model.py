@@ -5,17 +5,17 @@ import matplotlib.pyplot as plt
 import os
 from utils import load_data, add_shifted_features
 
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.metrics import mean_squared_error
 from keras.models import Sequential
-from keras.layers import Dense
+from keras.layers import Dense, Dropout
 from keras.layers import LSTM
 
-DATA_DIR = 'data'
+
 loc_target = 'kuopio-maaninka_2017'
-loc_neighbors = ['kasko_2017', 'hango-russaro_2017', 'utsjoki-nuorgam_2017'] # leave empty when no neighbours in model
+loc_neighbors = [] #['kasko_2017', 'hango-russaro_2017', 'utsjoki-nuorgam_2017'] # leave empty when no neighbours in model
 has_winddir=False
-abr = {'Pressure': 'P', 'Wind_speed': 'Wnd_s', 'Air_temperature':'Tmp', 'Wind_direction':'Wnd_dir'}
+abr = {'Pressure': 'P', 'Wind_speed': 'Wnd_s', 'Air_temperature':'Tmp', 'Wind_direction':'Wnd_dir', 'Cloud_amount': 'Clouds'}
 
 features = ['P', 'Tmp', 'Wnd_s']
 target = 'Tmp'
@@ -23,9 +23,9 @@ if 'Wnd_h' in features and 'Wnd_v' in features: # = Wind east-west, Wind north-s
     has_winddir = True
 
 train_size = 0.8
-epochs = 50
+epochs = 30
 do_scaling = True
-steps = [6, 9, 12, 24]
+steps = [3]
 
 plot_start = '2017-10-28 00:00:00'
 plot_end = '2017-11-01 00:00:00'
@@ -33,8 +33,8 @@ plot_end = '2017-11-01 00:00:00'
 n_features = len(features * (1 + len(loc_neighbors)))
 n_hours = len(steps)
 
-data_path = os.path.join(DATA_DIR, '{}.xlsx'.format(loc_target))
-df = load_data(data_path, rename_abr=abr)
+#data_path = os.path.join(DATA_DIR, '{}.xlsx'.format(loc_target))
+df = load_data(loc_target + '.xlsx')#, rename_abr=abr)
 if has_winddir:
     df['Wnd_v'] = np.sin(df['Wnd_dir'])
     df['Wnd_h'] = np.cos(df['Wnd_dir'])
@@ -54,6 +54,7 @@ for n in loc_neighbors:
 
 df = df.dropna()
 print(df.head(5), '\n')
+print(df.describe())
 df_y = df[target].to_frame()
 df_X = df.drop(features, axis=1)
 #if 'Wnd_dir' in features:
@@ -66,7 +67,8 @@ print(df_y.head())
 
 # Scaling the data to (0,1)
 if do_scaling:
-    scaler = MinMaxScaler(feature_range=(0, 1))
+    scaler = StandardScaler()
+    #scaler = MinMaxScaler(feature_range=(0, 1))
     X_data = scaler.fit_transform(df_X.values)
     y_data = scaler.fit_transform(df_y.values)
 else:
@@ -88,9 +90,24 @@ print('X_test reshape: ', X_test.shape)
 
 # Defining the model
 model = Sequential()
-model.add(LSTM(50, input_shape=(X_train.shape[1], X_train.shape[2])))
-model.add(Dense(1))
-model.compile(loss='MSE', optimizer='adam')
+model.add(LSTM(50, input_shape=(X_train.shape[1], X_train.shape[2]), return_sequences=True))
+#model.add(Dense(1))
+model.add(Dropout(0.2))
+
+model.add(LSTM(15, return_sequences=True))
+
+model.add(Dropout(0.2))
+    
+model.add(LSTM(20, return_sequences=False))
+model.add(Dropout(0.2))
+    
+model.add(Dense(1, activation="linear"))
+    
+model.compile(loss="mse", optimizer='rmsprop')
+    
+print(model.summary())
+
+#model.compile(loss='MSE', optimizer='rmsprop')
 # fit network
 history = model.fit(X_train, y_train, epochs=epochs, batch_size=72, validation_data=(X_test, y_test), verbose=1, shuffle=False)
 # plot history
@@ -101,20 +118,15 @@ plt.show()
  
 # # make a prediction
 yhat = model.predict(X_test)
-#X_test = X_test.reshape((X_test.shape[0], n_hours*n_features))
-# # invert scaling for forecast
-#inv_yhat = concatenate((yhat, X_test[:, 1:]), axis=1)
-#inv_yhat = scaler.inverse_transform(inv_yhat)
+
 if do_scaling:
     yhat = scaler.inverse_transform(yhat)
-#inv_yhat = inv_yhat[:,0]
-# invert scaling for actual
+
 y_test = y_test.reshape((len(y_test), 1))
-#inv_y = concatenate((y_test, X_test[:, 1:]), axis=1)
-#inv_y = scaler.inverse_transform(inv_y)
+
 if do_scaling:
     y_test = scaler.inverse_transform(y_test)
-#inv_y = inv_y[:,0]
+
 # calculate RMSE
 rmse = sqrt(mean_squared_error(y_test, yhat))
 print('Test RMSE: %.3f' % rmse)
