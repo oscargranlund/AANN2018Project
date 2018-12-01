@@ -50,6 +50,13 @@ def add_prediction_column(df, feature, steps):
         df['target'] = df[feature].shift(-step)
     return df
 
+def plot_predictions(predictions, true_values, start,end, title):
+    plt.figure()
+    predictions[start:end].plot(label='Predictions')
+    true_values[start:end].plot(label='True Values')
+    plt.legend()
+    plt.title(title)
+
 
 def make_train_test(df, features, predictions, sequence_len, tr_size):
     """Splits data into train and test."""
